@@ -1,12 +1,12 @@
-# Copyright (c) Meta Platforms, Inc. and affiliates 
+# Copyright (c) Meta Platforms, Inc. and affiliates
 # All rights reserved.
-# 
+#
 # This source code is licensed under the license found in the
 # LICENSE file in the root directory of this source tree.
 
 import copy
 import os
-import time 
+import time
 
 import numpy as np
 import torch
@@ -14,11 +14,12 @@ from data_loader import SubsData, load_data
 from state_loader import create_output_dir, load_saved_models, save_model
 from torch.utils.data import DataLoader
 from models import *
-
+# from torch.utils.tensorboard import SummaryWriter
 
 class Trainer:
     def __init__(self):
         super(Trainer, self).__init__()
+        # self.summaryWriter = SummaryWriter()
 
     def get_loss(self, model, indices, nr, context, name, margin):
         sims = self.get_model_output(model, indices, context, nr, name)
@@ -88,7 +89,7 @@ class Trainer:
         mask = scores[:, 0].repeat(scores.shape[1]).view(scores.shape[1], -1).T
         scores = scores + filter_mask
         predicted_index = torch.max(scores, dim=1).indices
-        ranks = torch.sum(scores >= mask, 1) 
+        ranks = torch.sum(scores >= mask, 1)
         return ranks, predicted_index
 
     def get_loss_naive_baseline(self, dataloader, model, n_ingrs, rank_file_path, filter):
@@ -100,17 +101,17 @@ class Trainer:
         mrr = 0.0
         hits = {1: 0, 3: 0, 10: 0}
         counter = 0
-        
+
         for tup in dataloader:
             batch = tup[0]
             filtered_mask = tup[1]
             sims = model(batch).view(-1, n_ingrs+1)
-            
+
             if filter:
                 ranks, predicted_index = self.get_rank_filter(sims, filtered_mask)
             else:
                 ranks, predicted_index = self.get_rank(sims)
-            
+
             # TODO_QUENTIN: hack to get the top predictions and not just the first
             top_k = 10
             top_k_indices = sims.topk(top_k, dim=-1, largest=True, sorted=True).indices
@@ -120,7 +121,7 @@ class Trainer:
             for key in hits:
                 hits[key] += torch.sum(ranks <= key)
             counter += len(ranks)
-            
+
             for ind in range(ranks.shape[0]):
                 ingr_a = batch[ind*(n_ingrs+1)][0].cpu().item()
                 ingr_b = batch[ind*(n_ingrs+1)][1].cpu().item()
@@ -169,12 +170,12 @@ class Trainer:
             sims = self.get_model_output(
                 model, batch, context, n_ingrs, name, embeddings
             ).view(-1, n_ingrs + 1)
-            
+
             if not filter:
                 ranks, predicted_index = self.get_rank(sims)
             else:
                 ranks, predicted_index = self.get_rank_filter(sims, filter_mask)
-            
+
             # TODO_QUENTIN: hack to have the top 5 suggestions from GISMO
             top_k = 10
             top_k_indices = sims.topk(top_k, dim=-1, largest=True, sorted=True).indices
@@ -189,6 +190,7 @@ class Trainer:
                 ingr_b = batch[ind*(n_ingrs+1)][1].cpu().item()
                 rank_of_ingr_b = ranks[ind].cpu().item()
                 pred_ingr = batch[ind*(n_ingrs+1)+predicted_index[ind].cpu().item()][1].cpu().item()
+                # ingr_b is the ground truth substitution? And the rank_of_ingr_b the predicted rank of the same?
                 line = [str(ingr_a), str(ingr_b), str(rank_of_ingr_b), str(pred_ingr)]
                 rank_file.write(" ".join(line) + "\n")
 
@@ -274,7 +276,7 @@ class Trainer:
             for train_batch in train_dataloader:
                 indices = train_batch[:, :-1]
                 sims = self.get_loss(model, indices, cfg.nr, context, cfg.name, cfg.margin)
-                
+
                 if cfg.name != "SAGE" and cfg.name != "GIN":
                     targets = torch.zeros(sims.shape[0]).long().to(device)
                     loss = loss_layer(sims, targets)
@@ -284,18 +286,23 @@ class Trainer:
                 opt.zero_grad()
                 loss.backward()
                 opt.step()
-                
+
                 if cfg.init_emb == "flavorgraph2" or cfg.init_emb == "food_bert2":
                     loss += torch.norm(model.ndata1.weight) * cfg.lambda_
 
                 epoch_loss += loss.cpu().item()
 
             print(epoch, epoch_loss)
+
+            # self.summaryWriter.add_scalar("epoch_loss_train", epoch_loss, epoch)
+            output_training_log_path = os.path.join(output_dir, "training_logs")
+            with open(output_training_log_path, "a") as log_file:
+                log_file.write(f"epoch {epoch} training loss:{epoch_loss} \n")
             print(time.time() - start_time)
             model.epoch.data = torch.from_numpy(np.array([epoch])).to(device)
-            
+
             save_model(model, opt, output_dir, is_best_model=False)
-            
+
             if epoch % cfg.val_itr == 0:
                 with torch.no_grad():
                     model.eval()
@@ -316,6 +323,9 @@ class Trainer:
                         save_model(best_model, opt, output_dir, is_best_model=True)
 
         print("Training finished!")
+
+        if best_model is None:
+            best_model = copy.deepcopy(model)
 
         print("Val results:")
         with torch.no_grad():

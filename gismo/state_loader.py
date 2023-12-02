@@ -1,11 +1,12 @@
-# Copyright (c) Meta Platforms, Inc. and affiliates 
+# Copyright (c) Meta Platforms, Inc. and affiliates
 # All rights reserved.
-# 
+#
 # This source code is licensed under the license found in the
 # LICENSE file in the root directory of this source tree.
 
 import copy
 import os
+import hashlib
 
 import torch
 
@@ -34,10 +35,15 @@ def create_output_dir(conf):
     params += "_p_augmentation_" + str(conf.p_augmentation)
     params += "_filter_" + str(conf.filter)
 
-    output_dir = os.path.join(base_dir, params)
+    model_hash = hashlib.sha1(params.encode("utf-8")).hexdigest()
+
+    output_dir = os.path.join(base_dir, model_hash)
 
     if not os.path.exists(os.path.join(base_dir, output_dir)):
         os.makedirs(os.path.join(base_dir, output_dir))
+        with open(os.path.join(base_dir, output_dir, "config.info"), "w+") as config_info_file:
+            config_info_file.write(f"Model configuration parameters: \r\n {params}")
+
         print("Created output directory {}".format(output_dir))
     return output_dir
 
