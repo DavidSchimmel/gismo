@@ -1,6 +1,6 @@
-# Copyright (c) Meta Platforms, Inc. and affiliates 
+# Copyright (c) Meta Platforms, Inc. and affiliates
 # All rights reserved.
-# 
+#
 # This source code is licensed under the license found in the
 # LICENSE file in the root directory of this source tree.
 
@@ -43,6 +43,8 @@ def load_edges(
             elif "ingr-dcomp" in row["edge_type"]:
                 edge_type = 3
                 score = 1
+                
+                # TODO add remaining edge types
 
             sources.append(node1_cnt)
             destinations.append(node2_cnt)
@@ -63,7 +65,7 @@ def load_edges(
             weights.append(1)
             types.append(4)
         print("self-loop is added to all nodes.")
-        
+
     sources = torch.tensor(sources)
     destinations = torch.tensor(destinations)
     weights = torch.tensor(weights)
@@ -93,6 +95,16 @@ def load_edges(
 
 
 def load_nodes(dir_):
+    """Load graph nodes and set up several dictionaries to quickly match node labels and indeces for processing in GISMo.
+
+    Args:
+        dir_ (os.path): Path to the directory where nodes and edges live. Nodes file should be named "nodes_191120.csv" as in flavorgraph.
+
+    Returns:
+        dict: collection of various mappings.
+            ingredients_cnt:
+            compounds_cnt:
+    """
     node_id2name = {}
     node_name2id = {}
     node_id2type = {}
@@ -110,6 +122,7 @@ def load_nodes(dir_):
             node_id2name[node_id] = row["name"]
             node_name2id[row["name"]] = node_id
             node_id2type[node_id] = node_type
+            # TODO add remaining node types (maybe)
             if "ingredient" in node_type:
                 ingredients_cnt.append(counter)
             else:
@@ -306,6 +319,9 @@ class SubsData(data.Dataset):
             self.dataset_list, self.ingr_vocab, self.max_context
         )
 
+        if self.split == "train":
+            self.load_precalculated_substitutability(data_dir)
+
         self.nnodes = nnodes
         if self.split == "train":
             self.lookup_table = self.create_lookup_table(self.dataset)
@@ -318,8 +334,62 @@ class SubsData(data.Dataset):
             lookup_table[ing1, ing2] += 1
         return lookup_table
 
-    def context_full_examples(self, examples, vocabs, max_context):
+    def load_precalculated_substitutability(self, data_dir):
+        # TODO: Load dict mapping ingredient (idx?) to a probability distribution for each ingredient to weight negative sampling, e.g. based on substitutability
+        # TODO: make modular like the other options
 
+        if self.split == "train":
+            print("loading precalculated similarities")
+            precalc_substitutailities_path = os.path.join(data_dir, "precalculated_substitutabilities", "cos_similarities.pt")
+            ingr_name_2_subst_col_path = os.path.join(data_dir, "precalculated_substitutabilities", "ingr_2_col.pkl")
+            sample_2_subst_row_path = os.path.join(data_dir, "precalculated_substitutabilities", "sample_2_row.pkl")
+
+            self.precalc_substitutabilities = torch.load(precalc_substitutailities_path)
+            with open(ingr_name_2_subst_col_path, "rb") as ingr_2_subst_col_file:
+                ingr_name_2_subst_col = pickle.load(ingr_2_subst_col_file)
+                # directly map the ingredient labels to the node counts used in the dataset to simplify lookup during negative sampling
+                self.ingr_cnt_2_subst_col = {self.node_id2count[self.node_name2id[ingredient]]: col for ingredient, col in list(ingr_name_2_subst_col.items())}
+            with open(sample_2_subst_row_path, "rb") as sample_2_subst_row_file:
+                sample_2_subst_row_ = pickle.load(sample_2_subst_row_file)
+                # replace the labels for the row mapping with ids as well.
+                self.sample_2_subst_row = {}
+                recipe_not_found_cnt = 0
+                source_not_found_cnt = 0
+                target_not_found_cnt = 0
+
+                for recipe_id, source_target_dict in list(sample_2_subst_row_.items()):
+                    if recipe_id not in self.recipe_id2counter:
+                        recipe_not_found_cnt += 1
+                        continue
+                    mapped_recipe_cnt = self.recipe_id2counter[recipe_id]
+                    if mapped_recipe_cnt not in self.sample_2_subst_row:
+                        self.sample_2_subst_row[mapped_recipe_cnt] = {}
+
+                    for source_label, target_dict in list(source_target_dict.items()):
+                        if source_label not in self.node_name2id:
+                            source_not_found_cnt += 1
+                            continue
+                        source_cnt = self.node_id2count[self.node_name2id[source_label]]
+                        if source_cnt not in self.sample_2_subst_row[mapped_recipe_cnt]:
+                            self.sample_2_subst_row[mapped_recipe_cnt][source_cnt] = {}
+
+                        for target_label, row_idx in list(target_dict.items()):
+                            if target_label not in self.node_name2id:
+                                target_not_found_cnt += 1
+                                continue
+                            target_cnt = self.node_id2count[self.node_name2id[target_label]]
+                            if target_cnt not in self.sample_2_subst_row[mapped_recipe_cnt][source_cnt]:
+                                self.sample_2_subst_row[mapped_recipe_cnt][source_cnt][target_cnt] = row_idx
+            print("loading precalculated similarities done")
+
+
+    def context_full_examples(self, examples, vocabs, max_context):
+        """
+        Maps example ids (aka recipe ids) to an incremental id counting up from 0
+        Parameters:
+            examples: are the samples taken from the comments (train/test/val)
+            max_context: upper limit on  number of ingredients from the ingredient list to be included in the sample
+        """
         output = torch.full((len(examples), max_context + 3), 0)
 
         for ind, example in enumerate(examples):
@@ -404,7 +474,7 @@ class SubsData(data.Dataset):
             #     return torch.cat((pos_example.view(1, -1), neg_examples), 0)
             # elif self.filter:
                 # do not remove itself from the list to avoid conflicts in ingredient id and index
-                
+
             pos_example = self.dataset[index, :]
             all_indices = self.ingredients_cnt.copy()
             # all_indices.remove(pos_example[1])
@@ -472,14 +542,73 @@ class SubsData(data.Dataset):
             context = set(example.view(-1).cpu().numpy())
             ingredients_cnt_wo_context = self.set_ingredients_cnt - context
             random_entities = torch.tensor(random.sample(ingredients_cnt_wo_context, nr))
-        elif self.neg_sampling == "smart2":
+        elif self.neg_sampling == "smart2" or (self.neg_sampling == "precalc" and self.split != "train"):
             context = example[0, 3:]
             context = context[context>0]
             context_set = set(context.cpu().numpy())
             ingredients_cnt_wo_context = self.set_ingredients_cnt - context_set
             random_entities = torch.tensor(random.sample(ingredients_cnt_wo_context, nr-len(context)))
             random_entities = torch.cat((context, random_entities))
-            
+        elif self.neg_sampling == "precalc" and self.split == "train":
+            sub_source = example[0, 0].item()
+            sub_target = example[0, 1].item()
+            recipe_id = example[0, 2].item()
+            # context = example[0, 3:]
+            # context = context[context>0]
+            # context_set = set(context.cpu().numpy())
+            # ingredients_cnt_wo_context = self.set_ingredients_cnt - context_set
+
+
+
+            row_index = None
+            if recipe_id not in self.sample_2_subst_row:
+                pass
+            elif sub_source not in self.sample_2_subst_row[recipe_id]:
+                pass
+            elif sub_target not in self.sample_2_subst_row[recipe_id][sub_source]:
+                pass
+            else:
+                row_index = self.sample_2_subst_row[recipe_id][sub_source][sub_target]
+            if row_index is not None:
+                # ingredients_cnt_wo_context_list = list(ingredients_cnt_wo_context)
+                # subst_per_ingr = self.precalc_substitutabilities[row_index, [self.ingr_cnt_2_subst_col[ingr_cnt] if ingr_cnt in self.ingr_cnt_2_subst_col else 0 for ingr_cnt in ingredients_cnt_wo_context_list]]
+
+                ingredients_list = list(ingredients_cnt)
+                # subst_per_ingr = self.precalc_substitutabilities[row_index, [self.ingr_cnt_2_subst_col[ingr_cnt] if ingr_cnt in self.ingr_cnt_2_subst_col else 0 for ingr_cnt in ingredients_cnt_wo_context_list]]
+                subst_per_ingr = self.precalc_substitutabilities[row_index, [self.ingr_cnt_2_subst_col[ingr_cnt] if ingr_cnt in self.ingr_cnt_2_subst_col else 0 for ingr_cnt in ingredients_list]]
+                subst_sum = torch.sum(subst_per_ingr)
+                if subst_sum <= 0:
+                    random_entities = torch.tensor(random.sample(ingredients_cnt, nr))
+                    # random_entities = torch.tensor(random.sample(ingredients_cnt_wo_context, nr-len(context)))
+                    # random_entities = torch.cat((context, random_entities))
+                else:
+                    # * if the center of the distribution should be weighted more, redicstribute around that center
+                    # subst_per_ingr = 1 - torch.abs(subst_per_ingr - torch.mean(subst_per_ingr))
+                    # * inverting the centre weighted distribution to put emphasize on the tail ends (inverted centre)
+                    subst_per_ingr = torch.abs(subst_per_ingr - torch.mean(subst_per_ingr))
+                    subst_per_ingr = subst_per_ingr + subst_per_ingr[subst_per_ingr > 0].min().item()
+                    # * if we want the distances to carry more weight - exponate
+                    subst_per_ingr = subst_per_ingr ** 2
+                    # * add some epsilon to avoid empty probabilities
+                    # subst_per_ingr = subst_per_ingr + (subst_per_ingr[subst_per_ingr > 0].min().item())
+                    # * if inverted, subtract each element value from one and add epsilon to give every sample a chance :)
+                    # subst_per_ingr = 1 - subst_per_ingr + (subst_per_ingr[subst_per_ingr > 0].min().item())
+                    # * then get p as relative based on substitutability
+                    p_per_ingr = subst_per_ingr / subst_sum
+                    choice_idxs = torch.multinomial(p_per_ingr, nr, replacement=False)
+                    # choice_idxs = torch.multinomial(p_per_ingr, nr-len(context), replacement=False)
+                    random_entities = torch.tensor([ingredients_list[i] for i in choice_idxs])
+
+                    # random_entities = torch.tensor([ingredients_cnt_wo_context_list[i] for i in choice_idxs])
+                    # random_entities = torch.tensor([ingredients_list[i] for i in choice_idxs])
+                    # random_entities = torch.cat((context, random_entities))
+            else:
+                random_entities = torch.tensor(random.sample(ingredients_cnt, nr))
+                # random_entities = torch.tensor(random.sample(ingredients_cnt_wo_context, nr-len(context)))
+                # random_entities = torch.cat((context, random_entities))
+
+            # precalc_subst_cols = [self.ingr_name_2_subst_col[self.] for ingr_cnt in ingredients_cnt_wo_context_list]
+
         neg_batch = torch.cat(
             (example[0, 0].repeat(nr).view(nr, 1), random_entities.view(nr, 1)), 1
         )

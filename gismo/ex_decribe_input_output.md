@@ -7,6 +7,7 @@
 ## Used data
 - files `train_comments_subs`, `test_comments_subs`, `val_comments_subs` all contain of recipes with ingredient lists as well a substitution tuple and recipe id (but not instructions, so if we want to use them, we might have to make use of text mining). Structure:
   - array of recipes as dictionaries with `id`, `ingredients`, and `subs` fields
+  - id is the recipe id as from Recipe1M
   - subs is a tuple (source ingredient, ground truth substitution)
   - ingredients is a list of lists; each sub-list contains of a number of ingredient labels for the same ingredient (e.g. ```ingredients[0] = ['margerine', 'margerine_spread', 'becel_margerine'...]```)
 
