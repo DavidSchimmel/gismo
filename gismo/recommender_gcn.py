@@ -177,7 +177,8 @@ class Trainer:
                 ranks, predicted_index = self.get_rank_filter(sims, filter_mask)
 
             # TODO_QUENTIN: hack to have the top 5 suggestions from GISMO
-            top_k = 10
+            top_k = 15
+            # top_k = 6652 #get all except the last (will assume that anything not in there is lowest rank to have some margin with extended graphs) to allow evaluation with different ground truth datasets
             top_k_indices = sims.topk(top_k, dim=-1, largest=True, sorted=True).indices
 
             mrr += torch.sum(1.0 / ranks)

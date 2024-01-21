@@ -37,13 +37,34 @@ def load_edges(
             if "ingr-ingr" in row["edge_type"]:
                 edge_type = 1
                 score = float(row["score"])
+            elif "rec-ingr" in row["edge_type"]:
+                edge_type = 5
+                score = 1
+            elif "rec-act" in row["edge_type"]:
+                edge_type = 6
+                score = 1
+            elif "ingr-act" in row["edge_type"]:
+                edge_type = 7
+                score = 1
+            elif "step-step" in row["edge_type"]:
+                edge_type = 8
+                score = 1
+            elif "step-act" in row["edge_type"]:
+                edge_type = 9
+                score = 1
+            elif "step-rec" in row["edge_type"]:
+                edge_type = 10
+                score = 1
+            elif "ingr-step" in row["edge_type"]:
+                edge_type = 11
+                score = 1
             elif "ingr-fcomp" in row["edge_type"]:
                 edge_type = 2
                 score = 1
             elif "ingr-dcomp" in row["edge_type"]:
                 edge_type = 3
                 score = 1
-                
+
                 # TODO add remaining edge types
 
             sources.append(node1_cnt)
@@ -83,6 +104,7 @@ def load_edges(
 
     # symmetric normalization
     if normalize:
+        print("noramlizing graph")
         in_degree = ops.copy_e_sum(graph, graph.edata["w"])
         in_norm = torch.pow(in_degree, -0.5)
         out_norm = torch.pow(in_degree, -0.5).unsqueeze(-1)
@@ -90,6 +112,7 @@ def load_edges(
         graph.ndata["out_norm"] = out_norm
         graph.apply_edges(fn.u_mul_v("in_norm", "out_norm", "n"))
         graph.edata["w"] = graph.edata["w"] * graph.edata["n"].squeeze()
+        print("noramlizing graph done")
 
     return graph
 
@@ -109,6 +132,9 @@ def load_nodes(dir_):
     node_name2id = {}
     node_id2type = {}
     ingredients_cnt = []
+    recipe_cnt = []
+    action_cnt = []
+    step_cnt = []
     compounds_cnt = []
     node_id2count = {}
     node_count2id = {}
@@ -125,6 +151,12 @@ def load_nodes(dir_):
             # TODO add remaining node types (maybe)
             if "ingredient" in node_type:
                 ingredients_cnt.append(counter)
+            elif "recipe" in node_type:
+                recipe_cnt.append(counter)
+            elif "action" in node_type:
+                action_cnt.append(counter)
+            elif "step" in node_type:
+                step_cnt.append(counter)
             else:
                 compounds_cnt.append(counter)
             node_id2count[node_id] = counter
@@ -133,6 +165,9 @@ def load_nodes(dir_):
     nnodes = len(node_id2name)
     print("#nodes:", nnodes)
     print("#ingredient nodes:", len(ingredients_cnt))
+    print(f"#recipe nodes: {len(recipe_cnt)}")
+    print(f"#action nodes: {len(action_cnt)}")
+    print(f"#step nodes: {len(step_cnt)}")
     print("#compound nodes:", len(compounds_cnt))
     return (
         node_id2count,
@@ -583,9 +618,10 @@ class SubsData(data.Dataset):
                     # random_entities = torch.cat((context, random_entities))
                 else:
                     # * if the center of the distribution should be weighted more, redicstribute around that center
-                    # subst_per_ingr = 1 - torch.abs(subst_per_ingr - torch.mean(subst_per_ingr))
+                    subst_per_ingr = 1 - torch.abs(subst_per_ingr - torch.mean(subst_per_ingr))
                     # * inverting the centre weighted distribution to put emphasize on the tail ends (inverted centre)
-                    subst_per_ingr = torch.abs(subst_per_ingr - torch.mean(subst_per_ingr))
+                    # subst_per_ingr = torch.abs(subst_per_ingr - torch.mean(subst_per_ingr))
+                    # * adding the epsilon should be done in both center and margin heavy casese to avoid excluding suggestions
                     subst_per_ingr = subst_per_ingr + subst_per_ingr[subst_per_ingr > 0].min().item()
                     # * if we want the distances to carry more weight - exponate
                     subst_per_ingr = subst_per_ingr ** 2

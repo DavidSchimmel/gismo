@@ -1,7 +1,7 @@
 import pickle
 import os#
 
-GISMO_INPUTS_PATH = os.path.abspath("./checkpoints")
+GISMO_INPUTS_PATH = os.path.abspath(".\\gismo\\checkpoints\\")
 
 def load_all_ground_truth_sets(gismo_inputs_path):
     val_comments_subs_path = os.path.join(gismo_inputs_path, "val_comments_subs.pkl")
