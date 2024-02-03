@@ -3,6 +3,8 @@
 - Reminder: Conda environment: `conda activate inverse_cooking_gismo`
 - starting training (best performing model): `python train.py name=GIN_MLP setup=context-full max_context=43 lr=0.00005 w_decay=0.0001 hidden=300 emb_d=300 dropout=0.25 nr=400 nlayers=2 lambda_=0.0 i=1 init_emb=random with_titles=False with_set=True filter=False`
 
+- for the arcelik dataset: `python train.py name=GIN_MLP setup=context-full max_context=43 lr=0.00005 w_decay=0.0001 hidden=300 emb_d=300 dropout=0.25 nr=20 nlayers=2 lambda_=0.0 i=1 init_emb=random with_titles=False with_set=True filter=False`
+
 
 ## Used data
 - files `train_comments_subs`, `test_comments_subs`, `val_comments_subs` all contain of recipes with ingredient lists as well a substitution tuple and recipe id (but not instructions, so if we want to use them, we might have to make use of text mining). Structure:

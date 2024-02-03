@@ -20,6 +20,10 @@ DO_SAVE_LIST_OF_LISTS_TO_CSV = True
 
 
 def load_all_output_pickles(gismo_inputs_path):
+    vocab_ingrs_path = os.path.join(gismo_inputs_path, "vocab_ingrs.pkl")
+    with open(vocab_ingrs_path, "rb") as vocab_ingrs_file:
+        vocab_ingrs = pickle.load(vocab_ingrs_file)
+
     with open(
             os.join(RESULTS_PATH, "val_ranks_out_modified.pkl"),
             "rb") as gismo_validation_output_file:
@@ -30,9 +34,6 @@ def load_all_output_pickles(gismo_inputs_path):
     with open(val_comments_subs_path, "rb") as val_comments_file:
         val_comments = pickle.load(val_comments_file)
 
-    vocab_ingrs_path = os.path.join(gismo_inputs_path, "vocab_ingrs.pkl")
-    with open(vocab_ingrs_path, "rb") as vocab_ingrs_file:
-        vocab_ingrs = pickle.load(vocab_ingrs_file)
 
     return gismo_output, val_comments, vocab_ingrs
 
@@ -104,7 +105,7 @@ def save_list_of_lists_to_csv(file_path, data_list):
 #         print("hello")
 
 if __name__ == "__main__":
-    # gismo_output, val_comments, vocab_ingrs = load_all_output_pickles(GISMO_INPUTS_PATH)
+    gismo_output, val_comments, vocab_ingrs = load_all_output_pickles(GISMO_INPUTS_PATH)
 
     # convert_vocab_to_csv(os.path.join(GISMO_INPUTS_PATH, "vocab_ingrs.pkl"), os.path.join(GISMO_INPUTS_PATH, "vocab_ingrs.csv"))
 
