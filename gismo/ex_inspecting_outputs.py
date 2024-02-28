@@ -24,8 +24,14 @@ def load_all_output_pickles(gismo_inputs_path):
     with open(vocab_ingrs_path, "rb") as vocab_ingrs_file:
         vocab_ingrs = pickle.load(vocab_ingrs_file)
 
+    # saving default dicts to use them elsewhere (as vocabs somehow needs a gimso module)
+    with open(os.path.abspath("./idx_2_word.pkl"), "wb") as idx_2_word_file:
+        pickle.dump(vocab_ingrs.idx2word, idx_2_word_file)
+    with open(os.path.abspath("./word_2_idx.pkl"), "wb") as word_2_idx_file:
+        pickle.dump(vocab_ingrs.word2idx, word_2_idx_file)
+
     with open(
-            os.join(RESULTS_PATH, "val_ranks_out_modified.pkl"),
+            os.path.join(RESULTS_PATH, "val_ranks_out_modified.pkl"),
             "rb") as gismo_validation_output_file:
         gismo_output = pickle.load(gismo_validation_output_file)
 

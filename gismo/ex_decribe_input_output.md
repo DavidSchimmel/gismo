@@ -5,6 +5,12 @@
 
 - for the arcelik dataset: `python train.py name=GIN_MLP setup=context-full max_context=43 lr=0.00005 w_decay=0.0001 hidden=300 emb_d=300 dropout=0.25 nr=20 nlayers=2 lambda_=0.0 i=1 init_emb=random with_titles=False with_set=True filter=False`
 
+- test `C:\UM\Master\FoodRecommendations\literature_models\GISMo\gismo\gismo>python train.py name=GIN_MLP setup=context-full max_context=43 lr=0.00005 w_decay=0.0001 hidden=300 emb_d=400 dropout=0.25 nr=20 nlayers=2 lambda_=0.0 i=1 init_emb=random with_titles=False with_set=True filter=False`
+
+## Usage:
+- add the right input graph and samples
+- add the config file with your configuration specifications
+- then run one of the commends above
 
 ## Used data
 - files `train_comments_subs`, `test_comments_subs`, `val_comments_subs` all contain of recipes with ingredient lists as well a substitution tuple and recipe id (but not instructions, so if we want to use them, we might have to make use of text mining). Structure:
@@ -14,6 +20,10 @@
   - ingredients is a list of lists; each sub-list contains of a number of ingredient labels for the same ingredient (e.g. ```ingredients[0] = ['margerine', 'margerine_spread', 'becel_margerine'...]```)
 
 ## Input
+
+- `val_comments_subs.pkl`, `test_comments_subs.pkl`, `train_comments_subs.pkl` are the samples for the test, train, validations sets.
+- `vocab_ingrs.pkl` are used to find the right nodes for the ingredients specified in the samples
+- `nodes_191120.csv`, `edges_191120.csv` are the
 
 ## Output
 
