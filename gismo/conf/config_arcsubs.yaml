@@ -1,6 +1,6 @@
 name: "GIN_MLP"
 setup: "context-full"
-# use `precalc` for the precalculated preliminary substitutability strategy (`regular` for the default baseline model)
+# use `precalc_center`, `precalc_fringes`, `precalc_head`, or `precalc_tail` for the precalculated preliminary substitutability strategic sampling (`regular` for the default baseline model)
 neg_sampling: "regular"
 i: 0
 
@@ -43,7 +43,7 @@ lr2: 0.001
 margin: 0.1
 
 # Where the outputs will be stored
-base_dir: "~/project/gismo/out/arcsubs/"
+base_dir: "~/project/gismo/out/tw2"
 
 # Path to dataset
 data_path: ".\\gismo\\checkpoints"

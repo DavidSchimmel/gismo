@@ -1,6 +1,6 @@
 name: "GIN_MLP"
 setup: "context-full"
-# use `precalc` for the precalculated preliminary substitutability strategy (`regular` for the default baseline model)
+# use `precalc_center`, `precalc_fringes`, `precalc_head`, or `precalc_tail` for the precalculated preliminary substitutability strategic sampling (`regular` for the default baseline model)
 neg_sampling: "regular"
 i: 0
 

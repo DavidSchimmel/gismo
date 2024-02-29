@@ -354,7 +354,7 @@ class SubsData(data.Dataset):
             self.dataset_list, self.ingr_vocab, self.max_context
         )
 
-        if self.split == "train":
+        if self.split == "train" and "precalc" in self.neg_sampling:
             self.load_precalculated_substitutability(data_dir)
 
         self.nnodes = nnodes
@@ -584,7 +584,7 @@ class SubsData(data.Dataset):
             ingredients_cnt_wo_context = self.set_ingredients_cnt - context_set
             random_entities = torch.tensor(random.sample(ingredients_cnt_wo_context, nr-len(context)))
             random_entities = torch.cat((context, random_entities))
-        elif self.neg_sampling == "precalc" and self.split == "train":
+        elif "precalc" in self.neg_sampling and self.split == "train":
             sub_source = example[0, 0].item()
             sub_target = example[0, 1].item()
             recipe_id = example[0, 2].item()
@@ -610,31 +610,82 @@ class SubsData(data.Dataset):
 
                 ingredients_list = list(ingredients_cnt)
                 # subst_per_ingr = self.precalc_substitutabilities[row_index, [self.ingr_cnt_2_subst_col[ingr_cnt] if ingr_cnt in self.ingr_cnt_2_subst_col else 0 for ingr_cnt in ingredients_cnt_wo_context_list]]
+                # the comment-out sections could be used if you want to simulate also the "smart" or "smart2" strategies in combination with strategic sampling
                 subst_per_ingr = self.precalc_substitutabilities[row_index, [self.ingr_cnt_2_subst_col[ingr_cnt] if ingr_cnt in self.ingr_cnt_2_subst_col else 0 for ingr_cnt in ingredients_list]]
                 subst_sum = torch.sum(subst_per_ingr)
-                if subst_sum <= 0:
+                if subst_sum <= 0: # random sampling if the precalc scores sum to (no information for that sample)
                     random_entities = torch.tensor(random.sample(ingredients_cnt, nr))
-                    # random_entities = torch.tensor(random.sample(ingredients_cnt_wo_context, nr-len(context)))
-                    # random_entities = torch.cat((context, random_entities))
+                    # random_entities = torch.tensor(random.sample(ingredients_cnt_wo_context, nr-len(context))) # this is also used with "smart" or "smart2"
+                    # random_entities = torch.cat((context, random_entities)) # this is also used with "smart" or "smart2"
                 else:
-                    # * if the center of the distribution should be weighted more, redicstribute around that center
-                    subst_per_ingr = 1 - torch.abs(subst_per_ingr - torch.mean(subst_per_ingr))
-                    # * inverting the centre weighted distribution to put emphasize on the tail ends (inverted centre)
-                    # subst_per_ingr = torch.abs(subst_per_ingr - torch.mean(subst_per_ingr))
-                    # * adding the epsilon should be done in both center and margin heavy casese to avoid excluding suggestions
-                    subst_per_ingr = subst_per_ingr + subst_per_ingr[subst_per_ingr > 0].min().item()
-                    # * if we want the distances to carry more weight - exponate
-                    subst_per_ingr = subst_per_ingr ** 2
-                    # * add some epsilon to avoid empty probabilities
-                    # subst_per_ingr = subst_per_ingr + (subst_per_ingr[subst_per_ingr > 0].min().item())
-                    # * if inverted, subtract each element value from one and add epsilon to give every sample a chance :)
-                    # subst_per_ingr = 1 - subst_per_ingr + (subst_per_ingr[subst_per_ingr > 0].min().item())
-                    # * then get p as relative based on substitutability
-                    p_per_ingr = subst_per_ingr / subst_sum
-                    choice_idxs = torch.multinomial(p_per_ingr, nr, replacement=False)
-                    # choice_idxs = torch.multinomial(p_per_ingr, nr-len(context), replacement=False)
-                    random_entities = torch.tensor([ingredients_list[i] for i in choice_idxs])
+                    if self.neg_sampling == "precalc_center":
+                        print("precalc_center")
+                        # * if the center of the distribution should be weighted more, redicstribute around that center
+                        subst_per_ingr = 1 - torch.abs(subst_per_ingr - torch.mean(subst_per_ingr))
+                        # * adding the epsilon should be done in both center and margin heavy casese to avoid excluding suggestions
+                        subst_per_ingr = subst_per_ingr + subst_per_ingr[subst_per_ingr > 0].min().item()
+                        # * if we want the distances to carry more weight - exponate
+                        subst_per_ingr = subst_per_ingr ** 2
+                        # * then get p as relative based on substitutability
+                        p_per_ingr = subst_per_ingr / subst_sum
+                        choice_idxs = torch.multinomial(p_per_ingr, nr, replacement=False)
+                        # choice_idxs = torch.multinomial(p_per_ingr, nr-len(context), replacement=False)
+                        random_entities = torch.tensor([ingredients_list[i] for i in choice_idxs])
+                    elif self.neg_sampling == "precalc_fringes":
+                        print("precalc_fringes")
+                        # * inverting the centre weighted distribution to put emphasize on the tail ends (inverted centre)
+                        subst_per_ingr = torch.abs(subst_per_ingr - torch.mean(subst_per_ingr))
+                        # * adding the epsilon should be done in both center and margin heavy casese to avoid excluding suggestions
+                        subst_per_ingr = subst_per_ingr + subst_per_ingr[subst_per_ingr > 0].min().item()
+                        # * if we want the distances to carry more weight - exponate
+                        subst_per_ingr = subst_per_ingr ** 2
+                        # * then get p as relative based on substitutability
+                        p_per_ingr = subst_per_ingr / subst_sum
+                        choice_idxs = torch.multinomial(p_per_ingr, nr, replacement=False)
+                        # choice_idxs = torch.multinomial(p_per_ingr, nr-len(context), replacement=False)
+                        random_entities = torch.tensor([ingredients_list[i] for i in choice_idxs])
+                    elif self.neg_sampling == "precalc_head":
+                        print("precalc_head")
+                        # * add some epsilon to avoid empty probabilities
+                        subst_per_ingr = subst_per_ingr + (subst_per_ingr[subst_per_ingr > 0].min().item())
+                        # * if we want the distances to carry more weight - exponate
+                        subst_per_ingr = subst_per_ingr ** 2
+                        p_per_ingr = subst_per_ingr / subst_sum
+                        choice_idxs = torch.multinomial(p_per_ingr, nr, replacement=False)
+                        # choice_idxs = torch.multinomial(p_per_ingr, nr-len(context), replacement=False)
+                        random_entities = torch.tensor([ingredients_list[i] for i in choice_idxs])
+                    elif self.neg_sampling == "precalc_tail":
+                        print("precalc_tail")
+                        # * if inverted, subtract each element value from one and add epsilon to give every sample a chance :)
+                        subst_per_ingr = 1 - subst_per_ingr + (subst_per_ingr[subst_per_ingr > 0].min().item())
+                        # * if we want the distances to carry more weight - exponate
+                        subst_per_ingr = subst_per_ingr ** 2
+                        p_per_ingr = subst_per_ingr / subst_sum
+                        choice_idxs = torch.multinomial(p_per_ingr, nr, replacement=False)
+                        # choice_idxs = torch.multinomial(p_per_ingr, nr-len(context), replacement=False)
+                        random_entities = torch.tensor([ingredients_list[i] for i in choice_idxs])
 
+
+
+                    # # * if the center of the distribution should be weighted more, redicstribute around that center
+                    # subst_per_ingr = 1 - torch.abs(subst_per_ingr - torch.mean(subst_per_ingr))
+                    # # * inverting the centre weighted distribution to put emphasize on the tail ends (inverted centre)
+                    # # subst_per_ingr = torch.abs(subst_per_ingr - torch.mean(subst_per_ingr))
+                    # # * adding the epsilon should be done in both center and margin heavy casese to avoid excluding suggestions
+                    # subst_per_ingr = subst_per_ingr + subst_per_ingr[subst_per_ingr > 0].min().item()
+                    # # * if we want the distances to carry more weight - exponate
+                    # subst_per_ingr = subst_per_ingr ** 2
+                    # # * add some epsilon to avoid empty probabilities
+                    # # subst_per_ingr = subst_per_ingr + (subst_per_ingr[subst_per_ingr > 0].min().item())
+                    # # * if inverted, subtract each element value from one and add epsilon to give every sample a chance :)
+                    # # subst_per_ingr = 1 - subst_per_ingr + (subst_per_ingr[subst_per_ingr > 0].min().item())
+                    # # * then get p as relative based on substitutability
+                    # p_per_ingr = subst_per_ingr / subst_sum
+                    # choice_idxs = torch.multinomial(p_per_ingr, nr, replacement=False)
+                    # # choice_idxs = torch.multinomial(p_per_ingr, nr-len(context), replacement=False)
+                    # random_entities = torch.tensor([ingredients_list[i] for i in choice_idxs])
+
+                    # these are, again, options needed to make negative sampling strategies work with "smart" or "smart2"
                     # random_entities = torch.tensor([ingredients_cnt_wo_context_list[i] for i in choice_idxs])
                     # random_entities = torch.tensor([ingredients_list[i] for i in choice_idxs])
                     # random_entities = torch.cat((context, random_entities))
